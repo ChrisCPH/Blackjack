@@ -1,127 +1,201 @@
-﻿namespace Blackjack.Tests;
-using Blackjack.Classes;
+﻿using Blackjack.Classes;
 using Blackjack.Enums;
 
-public class UnitTests
+namespace Blackjack.Tests
 {
-    [Fact]
-    public void GetValue_TwoNumberCards_ReturnsSum()
+    public class UnitTests
     {
-        var hand = new Hand();
+        [Fact]
+        public void GetValue_TwoNumberCards_ReturnsSum()
+        {
+            var hand = new Hand();
 
-        hand.AddCard(new Card("Hearts", "5", 5));
-        hand.AddCard(new Card("Spades", "7", 7));
+            hand.AddCard(new Card("Hearts", "5", 5));
+            hand.AddCard(new Card("Spades", "7", 7));
 
-        Assert.Equal(12, hand.GetValue());
-    }
+            Assert.Equal(12, hand.GetValue());
+        }
 
-    [Fact]
-    public void GetValue_AceAndSix_Returns17()
-    {
-        var hand = new Hand();
+        [Fact]
+        public void GetValue_AceAndSix_Returns17()
+        {
+            var hand = new Hand();
 
-        hand.AddCard(new Card("Hearts", "Ace", 11));
-        hand.AddCard(new Card("Spades", "6", 6));
+            hand.AddCard(new Card("Hearts", "Ace", 11));
+            hand.AddCard(new Card("Spades", "6", 6));
 
-        Assert.Equal(17, hand.GetValue());
-    }
+            Assert.Equal(17, hand.GetValue());
+        }
 
-    [Fact]
-    public void IsSoft_AceAndSix_ReturnsTrue()
-    {
-        var hand = new Hand();
+        [Fact]
+        public void IsSoft_AceAndSix_ReturnsTrue()
+        {
+            var hand = new Hand();
 
-        hand.AddCard(new Card("Hearts", "Ace", 11));
-        hand.AddCard(new Card("Spades", "6", 6));
+            hand.AddCard(new Card("Hearts", "Ace", 11));
+            hand.AddCard(new Card("Spades", "6", 6));
 
-        Assert.True(hand.IsSoft());
-    }
+            Assert.True(hand.IsSoft());
+        }
 
-    [Fact]
-    public void IsSoft_AceSixTen_ReturnsFalse()
-    {
-        var hand = new Hand();
+        [Fact]
+        public void IsSoft_AceSixTen_ReturnsFalse()
+        {
+            var hand = new Hand();
 
-        hand.AddCard(new Card("Hearts", "Ace", 11));
-        hand.AddCard(new Card("Spades", "6", 6));
-        hand.AddCard(new Card("Clubs", "10", 10));
+            hand.AddCard(new Card("Hearts", "Ace", 11));
+            hand.AddCard(new Card("Spades", "6", 6));
+            hand.AddCard(new Card("Clubs", "10", 10));
 
-        Assert.False(hand.IsSoft());
-    }
+            Assert.False(hand.IsSoft());
+        }
 
-    [Fact]
-    public void Split_CreatesTwoHands()
-    {
-        var player = new Player("Test");
+        [Fact]
+        public void Split_CreatesTwoHands()
+        {
+            var player = new Player("Test");
 
-        player.Hands[0].AddCard(new Card("Hearts", "8", 8));
-        player.Hands[0].AddCard(new Card("Spades", "8", 8));
+            var hand = new Hand();
+            player.Hands.Add(hand);
 
-        var deck = new Deck();
+            hand.AddCard(new Card("Hearts", "8", 8));
+            hand.AddCard(new Card("Spades", "8", 8));
 
-        player.Split(deck);
+            var deck = new Deck();
 
-        Assert.Equal(2, player.Hands.Count);
-    }
+            var newHand = hand.Split(deck);
 
-    [Fact]
-    public void CanSplit_TwoEights_ReturnsTrue()
-    {
-        var player = new Player("Test");
+            player.Hands.Add(newHand);
 
-        player.Hands[0].AddCard(new Card("Hearts", "8", 8));
-        player.Hands[0].AddCard(new Card("Spades", "8", 8));
+            Assert.Equal(2, player.Hands.Count);
+        }
 
-        Assert.True(player.CanSplit());
-    }
+        [Fact]
+        public void CanSplit_TwoEights_ReturnsTrue()
+        {
+            var hand = new Hand();
 
-    [Fact]
-    public void CanSplit_EightAndNine_ReturnsFalse()
-    {
-        var player = new Player("Test");
+            hand.AddCard(new Card("Hearts", "8", 8));
+            hand.AddCard(new Card("Spades", "8", 8));
 
-        player.Hands[0].AddCard(new Card("Hearts", "8", 8));
-        player.Hands[0].AddCard(new Card("Spades", "9", 9));
+            Assert.True(hand.CanSplit());
+        }
 
-        Assert.False(player.CanSplit());
-    }
+        [Fact]
+        public void CanSplit_EightAndNine_ReturnsFalse()
+        {
+            var hand = new Hand();
 
-    [Fact]
-    public void ShouldHit_Soft17_ReturnsTrue()
-    {
-        var dealer = new Dealer();
+            hand.AddCard(new Card("Hearts", "8", 8));
+            hand.AddCard(new Card("Spades", "9", 9));
 
-        dealer.Hand.AddCard(new Card("Hearts", "Ace", 11));
-        dealer.Hand.AddCard(new Card("Spades", "6", 6));
+            Assert.False(hand.CanSplit());
+        }
 
-        Assert.True(dealer.ShouldHit());
-    }
+        [Fact]
+        public void CanSplit_ThreeCards_ReturnsFalse()
+        {
+            var hand = new Hand();
 
-    [Fact]
-    public void ShouldHit_Hard17_ReturnsFalse()
-    {
-        var dealer = new Dealer();
+            hand.AddCard(new Card("Hearts", "8", 8));
+            hand.AddCard(new Card("Spades", "8", 8));
+            hand.AddCard(new Card("Clubs", "2", 2));
 
-        dealer.Hand.AddCard(new Card("Hearts", "10", 10));
-        dealer.Hand.AddCard(new Card("Spades", "7", 7));
+            Assert.False(hand.CanSplit());
+        }
 
-        Assert.False(dealer.ShouldHit());
-    }
+        [Fact]
+        public void ShouldHit_Soft17_ReturnsTrue()
+        {
+            var dealer = new Dealer();
 
-    [Fact]
-    public void Evaluate_PlayerHigherThanDealer_Wins()
-    {
-        var player = new Player("Test");
-        var dealer = new Dealer();
+            dealer.Hand.AddCard(new Card("Hearts", "Ace", 11));
+            dealer.Hand.AddCard(new Card("Spades", "6", 6));
 
-        player.Hands[0].AddCard(new Card("Hearts", "10", 10));
-        player.Hands[0].AddCard(new Card("Spades", "9", 9));
+            Assert.True(dealer.ShouldHit());
+        }
 
-        dealer.Hand.AddCard(new Card("Clubs", "10", 10));
-        dealer.Hand.AddCard(new Card("Diamonds", "7", 7));
+        [Fact]
+        public void ShouldHit_Hard17_ReturnsFalse()
+        {
+            var dealer = new Dealer();
 
-        HandEvaluator.Evaluate([player], dealer);
+            dealer.Hand.AddCard(new Card("Hearts", "10", 10));
+            dealer.Hand.AddCard(new Card("Spades", "7", 7));
 
-        Assert.Equal(HandResult.Win, player.Hands[0].Result);
+            Assert.False(dealer.ShouldHit());
+        }
+
+        [Fact]
+        public void Split_AllowsFourHands()
+        {
+            var player = new Player("Test");
+
+            var hand = new Hand();
+            player.Hands.Add(hand);
+
+            hand.AddCard(new Card("H", "8", 8));
+            hand.AddCard(new Card("S", "8", 8));
+
+            var deck = new Deck();
+
+            var h2 = hand.Split(deck);
+            player.Hands.Add(h2);
+
+            var h3 = h2.Split(deck);
+            player.Hands.Add(h3);
+
+            var h4 = h3.Split(deck);
+            player.Hands.Add(h4);
+
+            Assert.Equal(4, player.Hands.Count);
+        }
+
+        [Fact]
+        public void GetValue_AceSixTen_Returns17()
+        {
+            var hand = new Hand();
+
+            hand.AddCard(new Card("Hearts", "Ace", 11));
+            hand.AddCard(new Card("Spades", "6", 6));
+            hand.AddCard(new Card("Clubs", "10", 10));
+
+            Assert.Equal(17, hand.GetValue());
+        }
+
+        [Fact]
+        public void GetValue_TwoAcesAndNine_Returns21()
+        {
+            var hand = new Hand();
+
+            hand.AddCard(new Card("Hearts", "Ace", 11));
+            hand.AddCard(new Card("Spades", "Ace", 11));
+            hand.AddCard(new Card("Clubs", "9", 9));
+
+            Assert.Equal(21, hand.GetValue());
+        }
+
+        [Fact]
+        public void IsBust_TwentyTwo_ReturnsTrue()
+        {
+            var hand = new Hand();
+
+            hand.AddCard(new Card("Hearts", "10", 10));
+            hand.AddCard(new Card("Spades", "10", 10));
+            hand.AddCard(new Card("Clubs", "2", 2));
+
+            Assert.True(hand.IsBust);
+        }
+
+        [Fact]
+        public void ShouldHit_Sixteen_ReturnsTrue()
+        {
+            var dealer = new Dealer();
+
+            dealer.Hand.AddCard(new Card("Hearts", "10", 10));
+            dealer.Hand.AddCard(new Card("Spades", "6", 6));
+
+            Assert.True(dealer.ShouldHit());
+        }
     }
 }

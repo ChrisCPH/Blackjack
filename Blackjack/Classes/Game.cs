@@ -15,6 +15,8 @@ namespace Blackjack.Classes
         private readonly Deck _deck = new();
         private bool _dealerReveal = false;
         private readonly UIManager _ui = new();
+        public event Action<GameStateChangedEvent>? OnStateChanged;
+        private Guid _activeHandId;
 
         public Game()
         {
@@ -22,10 +24,22 @@ namespace Blackjack.Classes
             _deck.Shuffle();
         }
 
+        private void NotifyUI()
+        {
+            OnStateChanged?.Invoke(new GameStateChangedEvent
+            {
+                Players = _players,
+                Dealer = _dealer,
+                DealerReveal = _dealerReveal,
+                ActiveHandId = _activeHandId
+            });
+        }
 
         public void Start()
         {
             _players.Add(new Player("Player1"));
+
+            OnStateChanged += _ui.Table;
 
             _deck.Shuffle();
 
@@ -55,7 +69,7 @@ namespace Blackjack.Classes
             }
 
             DealInitialCards();
-            _ui.Table(_players, _dealer, _dealerReveal);
+            NotifyUI();
 
             foreach (var player in _players)
             {
@@ -63,7 +77,7 @@ namespace Blackjack.Classes
             }
 
             DealerTurn();
-            _ui.Table(_players, _dealer, _dealerReveal);
+            NotifyUI();
 
             ShowResults();
         }
@@ -72,18 +86,12 @@ namespace Blackjack.Classes
         {
             foreach (var player in _players)
             {
-                foreach (var hand in player.Hands)
-                {
-                    hand.Cards.Clear();
-                }
-
-                player.Hands.Clear();
-                player.Hands.Add(new Hand());
-                player.ActiveHandIndex = 0;
+                player.Reset();
             }
 
+            _dealer.Hand = new Hand();
             _dealerReveal = false;
-            _dealer.Hand.Cards.Clear();
+            _activeHandId = Guid.Empty;
         }
 
         private bool AskPlayAgain()
@@ -100,12 +108,12 @@ namespace Blackjack.Classes
         {
             foreach (var player in _players)
             {
-                if (player.Hands.Count == 0)
-                    player.Hands.Add(new Hand());
+                var hand = new Hand();
 
-                var hand = player.Hands[0];
                 hand.AddCard(_deck.DrawCard());
                 hand.AddCard(_deck.DrawCard());
+
+                player.Hands.Add(hand);
             }
 
             _dealer.Hand.AddCard(_deck.DrawCard());
@@ -114,44 +122,55 @@ namespace Blackjack.Classes
 
         private void PlayerTurn(Player player)
         {
-            for (int h = 0; h < player.Hands.Count; h++)
+            Queue<Hand> queue = new();
+
+            for (int i = 0; i < player.Hands.Count; i++)
             {
-                player.ActiveHandIndex = h;
+                queue.Enqueue((player.Hands[i]));
+            }
 
-                var hand = player.Hands[h];
+            while (queue.Count > 0)
+            {
+                var hand = queue.Dequeue();
+                var index = player.Hands.IndexOf(hand);
 
-                while (true)
+                while (hand.State == HandState.Active && !hand.IsBust)
                 {
-                    if (hand.IsBust)
-                    {
-                        Console.WriteLine("BUST!");
-                        break;
-                    }
+                    _activeHandId = hand.Id;
+                    NotifyUI();
 
                     var choices = new List<string> { "Hit", "Stand" };
 
-                    if (player.CanSplit())
+                    if (hand.CanSplit())
                         choices.Add("Split");
 
                     var choice = AnsiConsole.Prompt(
                         new SelectionPrompt<string>()
-                            .Title($"What do you want to do? (Hand {h + 1})")
+                            .Title($"What do you want to do? (Hand {index + 1})")
                             .AddChoices(choices));
-
-                    if (choice == "Split")
-                    {
-                        player.Split(_deck);
-                        _ui.Table(_players, _dealer, _dealerReveal);
-                        continue;
-                    }
 
                     if (choice == "Hit")
                     {
                         hand.AddCard(_deck.DrawCard());
-                        _ui.Table(_players, _dealer, _dealerReveal);
+
+                        if (hand.IsBust)
+                            hand.State = HandState.Bust;
+
+                        NotifyUI();
+                    }
+                    else if (choice == "Split")
+                    {
+                        var newHand = hand.Split(_deck);
+
+                        player.Hands.Add(newHand);
+                        queue.Enqueue(newHand);
+
+                        NotifyUI();
                     }
                     else
                     {
+                        hand.State = HandState.Finished;
+                        NotifyUI();
                         break;
                     }
                 }
@@ -160,18 +179,16 @@ namespace Blackjack.Classes
 
         private void DealerTurn()
         {
-            _ui.Table(_players, _dealer, _dealerReveal);
 
             while (_dealer.ShouldHit())
             {
                 var card = _deck.DrawCard();
                 _dealer.Hand.AddCard(card);
 
-                _ui.Table(_players, _dealer, _dealerReveal);
+                NotifyUI();
             }
 
             _dealerReveal = true;
-            _ui.Table(_players, _dealer, _dealerReveal);
         }
 
         private void ShowResults()

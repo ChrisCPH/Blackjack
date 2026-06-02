@@ -13,13 +13,33 @@ namespace Blackjack.Classes
             int dealerScore = dealer.Hand.GetValue();
             bool dealerBust = dealer.Hand.GetValue() > 21;
 
+            bool dealerBlackjack =
+                dealerScore == 21 &&
+                dealer.Hand.Cards.Count == 2;
+
             foreach (var player in players)
             {
                 foreach (var hand in player.Hands)
                 {
                     int playerScore = hand.GetValue();
 
-                    if (hand.IsBust)
+                    bool playerBlackjack =
+                        playerScore == 21 &&
+                        hand.Cards.Count == 2;
+
+                    if (playerBlackjack && dealerBlackjack)
+                    {
+                        hand.Result = HandResult.Push;
+                    }
+                    else if (playerBlackjack)
+                    {
+                        hand.Result = HandResult.Blackjack;
+                    }
+                    else if (dealerBlackjack)
+                    {
+                        hand.Result = HandResult.Lose;
+                    }
+                    else if (hand.IsBust)
                     {
                         hand.Result = HandResult.Bust;
                     }
@@ -38,11 +58,6 @@ namespace Blackjack.Classes
                     else
                     {
                         hand.Result = HandResult.Push;
-                    }
-
-                    if (playerScore == 21 && hand.Cards.Count == 2)
-                    {
-                        hand.Result = HandResult.Blackjack;
                     }
                 }
             }

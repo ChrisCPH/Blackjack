@@ -9,23 +9,21 @@ namespace Blackjack.UI
 {
     public class UIManager
     {
-
-        public void Table(List<Player> players, Dealer dealer, bool revealDealer)
+        public void Table(GameStateChangedEvent state)
         {
             AnsiConsole.Clear();
 
             var grid = new Grid();
-
             grid.AddColumn();
 
             var dealerPanel = new Panel(
                 HandString(
                     "Dealer",
-                    dealer.Hand.Cards,
-                    revealDealer
-                        ? dealer.Hand.GetValue()
-                        : GetVisibleDealerValue(dealer.Hand.Cards),
-                    hideFirst: !revealDealer
+                    state.Dealer.Hand.Cards,
+                    state.DealerReveal
+                        ? state.Dealer.Hand.GetValue()
+                        : GetVisibleDealerValue(state.Dealer.Hand.Cards),
+                    hideFirst: !state.DealerReveal
                 )
             )
             .Header("[bold red]Dealer[/]")
@@ -33,20 +31,29 @@ namespace Blackjack.UI
 
             grid.AddRow(dealerPanel);
 
-            foreach (var player in players)
+            foreach (var player in state.Players)
             {
                 for (int i = 0; i < player.Hands.Count; i++)
                 {
                     var hand = player.Hands[i];
 
+                    var isActive = state.ActiveHandId == hand.Id;
+
+                    var title = isActive
+                        ? $"{player.Name} - Hand {i + 1} (Playing)"
+                        : $"{player.Name} - Hand {i + 1}";
+
+
                     var playerPanel = new Panel(
                         HandString(
-                            $"{player.Name} - Hand {i + 1}",
+                            title,
                             hand.Cards,
                             hand.GetValue()
                         )
                     )
-                    .Header($"[bold cyan]{player.Name} - Hand {i + 1}[/]")
+                    .Header(isActive
+                        ? $"[bold yellow]{title}[/]"
+                        : $"[bold cyan]{title}[/]")
                     .Border(BoxBorder.Rounded);
 
                     grid.AddRow(playerPanel);
@@ -111,8 +118,6 @@ namespace Blackjack.UI
             int height = cardLines.Max(c => c.Length);
 
             var result = new StringBuilder();
-
-            result.AppendLine($"{title}");
 
             for (int i = 0; i < height; i++)
             {

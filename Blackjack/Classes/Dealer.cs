@@ -6,7 +6,7 @@ namespace Blackjack.Classes
 {
     public class Dealer
     {
-        public Hand Hand { get; } = new();
+        public Hand Hand { get; set; } = new();
 
         public bool IsBust => Hand.GetValue() > 21;
 
