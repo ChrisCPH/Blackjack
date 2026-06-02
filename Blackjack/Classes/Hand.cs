@@ -8,6 +8,9 @@ public class Hand
     public HandResult Result { get; set; } = HandResult.Pending;
     public HandState State { get; set; } = HandState.Active;
     public bool IsBust => GetValue() > 21;
+    public decimal Bet { get; set; }
+    public decimal Payout { get; set; }
+    public decimal Net => Payout - Bet;
 
     public void AddCard(Card card)
     {

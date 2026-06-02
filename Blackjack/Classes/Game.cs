@@ -17,6 +17,7 @@ namespace Blackjack.Classes
         private readonly UIManager _ui = new();
         public event Action<GameStateChangedEvent>? OnStateChanged;
         private Guid _activeHandId;
+        private readonly Bets _bets = new();
 
         public Game()
         {
@@ -31,7 +32,8 @@ namespace Blackjack.Classes
                 Players = _players,
                 Dealer = _dealer,
                 DealerReveal = _dealerReveal,
-                ActiveHandId = _activeHandId
+                ActiveHandId = _activeHandId,
+                Balance = _players.Sum(p => p.Balance)
             });
         }
 
@@ -62,11 +64,15 @@ namespace Blackjack.Classes
 
         private void PlayRound()
         {
+            ResetRound();
+
             if (_deck.ShouldReshuffle)
             {
                 Console.WriteLine("Reshuffling deck...");
                 _deck.RebuildAndShuffle();
             }
+
+            _bets.TakeBets(_players);
 
             DealInitialCards();
             NotifyUI();
@@ -77,6 +83,11 @@ namespace Blackjack.Classes
             }
 
             DealerTurn();
+
+            HandEvaluator.Evaluate(_players, _dealer);
+
+            _bets.PayWinnings(_players, _dealer);
+
             NotifyUI();
 
             ShowResults();
@@ -108,12 +119,10 @@ namespace Blackjack.Classes
         {
             foreach (var player in _players)
             {
-                var hand = new Hand();
+                var hand = player.Hands[0];
 
                 hand.AddCard(_deck.DrawCard());
                 hand.AddCard(_deck.DrawCard());
-
-                player.Hands.Add(hand);
             }
 
             _dealer.Hand.AddCard(_deck.DrawCard());
@@ -193,24 +202,26 @@ namespace Blackjack.Classes
 
         private void ShowResults()
         {
-            HandEvaluator.Evaluate(_players, _dealer);
+            AnsiConsole.WriteLine("\nResults:\n");
 
-            Console.WriteLine("\nResults:\n");
-
-            Console.WriteLine($"Dealer score: ({_dealer.Hand.GetValue()})\n");
+            AnsiConsole.WriteLine($"Dealer score: ({_dealer.Hand.GetValue()})\n");
 
             foreach (var player in _players)
             {
-                Console.WriteLine(player.Name);
+                AnsiConsole.MarkupLine($"[yellow]{player.Name}[/] - Balance: [green]{player.Balance}[/]");
 
                 foreach (var hand in player.Hands)
                 {
-                    Console.WriteLine($"Hand ({hand.GetValue()}): {hand.Result}");
+                    AnsiConsole.MarkupLine(
+                        $"Hand ({hand.GetValue()}): {hand.Result}\n" +
+                        $"Bet: [bold green]{hand.Bet}[/]\n" +
+                        $"Payout: [bold green]{hand.Payout}[/]\n" +
+                        $"Net: [bold green]{hand.Net}[/]\n"
+                    );
                 }
 
-                Console.WriteLine();
+                AnsiConsole.WriteLine();
             }
-
         }
     }
 }

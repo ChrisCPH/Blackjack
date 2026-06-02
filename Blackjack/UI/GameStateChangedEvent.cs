@@ -11,5 +11,6 @@ namespace Blackjack.UI
         public required Dealer Dealer { get; set; }
         public bool DealerReveal { get; set; }
         public Guid ActiveHandId { get; set; }
+        public decimal Balance { get; set; }
     }
 }

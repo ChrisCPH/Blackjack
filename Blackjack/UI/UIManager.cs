@@ -13,8 +13,16 @@ namespace Blackjack.UI
         {
             AnsiConsole.Clear();
 
-            var grid = new Grid();
-            grid.AddColumn();
+            var panels = new List<Panel>
+            {
+                new Panel(
+                    string.Join("\n", state.Players.Select(p =>
+                        $"[yellow]{p.Name}[/] - Balance: [green]{p.Balance}[/]"
+                    ))
+                )
+                .Border(BoxBorder.Rounded)
+                .Header("[blue]Casino Wallet[/]")
+            };
 
             var dealerPanel = new Panel(
                 HandString(
@@ -29,7 +37,7 @@ namespace Blackjack.UI
             .Header("[bold red]Dealer[/]")
             .Border(BoxBorder.Rounded);
 
-            grid.AddRow(dealerPanel);
+            panels.Add(dealerPanel);
 
             foreach (var player in state.Players)
             {
@@ -40,27 +48,26 @@ namespace Blackjack.UI
                     var isActive = state.ActiveHandId == hand.Id;
 
                     var title = isActive
-                        ? $"{player.Name} - Hand {i + 1} (Playing)"
+                        ? $"{player.Name} - Hand {i + 1} (PLAYING)"
                         : $"{player.Name} - Hand {i + 1}";
 
+                    var content = HandString(
+                        title,
+                        hand.Cards,
+                        hand.GetValue()
+                    );
 
-                    var playerPanel = new Panel(
-                        HandString(
-                            title,
-                            hand.Cards,
-                            hand.GetValue()
-                        )
-                    )
-                    .Header(isActive
-                        ? $"[bold yellow]{title}[/]"
-                        : $"[bold cyan]{title}[/]")
-                    .Border(BoxBorder.Rounded);
+                    var playerPanel = new Panel(content)
+                        .Header(isActive
+                            ? $"[bold yellow]{title}[/]"
+                            : $"[bold cyan]{title}[/]")
+                        .Border(BoxBorder.Rounded);
 
-                    grid.AddRow(playerPanel);
+                    panels.Add(playerPanel);
                 }
             }
 
-            AnsiConsole.Write(grid);
+            AnsiConsole.Write(new Rows(panels));
         }
 
         private string Card(Card card)
@@ -114,6 +121,11 @@ namespace Blackjack.UI
             var cardLines = cardStrings
                 .Select(c => c.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
                 .ToList();
+
+            if (cardLines.Count == 0)
+            {
+                return $"{title}\n(No cards)\nScore: 0";
+            }
 
             int height = cardLines.Max(c => c.Length);
 
