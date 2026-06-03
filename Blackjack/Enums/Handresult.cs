@@ -11,6 +11,7 @@ namespace Blackjack.Enums
         Lose,
         Push,
         Blackjack,
-        Bust
+        Bust,
+        Surrender
     }
 }

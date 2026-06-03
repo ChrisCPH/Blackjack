@@ -39,24 +39,45 @@ namespace Blackjack.Classes
 
         public void Start()
         {
-            _players.Add(new Player("Player1"));
+            bool restart = true;
 
-            OnStateChanged += _ui.Table;
-
-            _deck.Shuffle();
-
-            bool playAgain = true;
-
-            while (playAgain)
+            while (restart)
             {
-                PlayRound();
+                _players.Clear();
 
-                playAgain = AskPlayAgain();
+                var setup = new GameSetup();
+                var playerCount = setup.AskPlayerCount();
 
-                if (playAgain)
+                for (int i = 1; i <= playerCount; i++)
                 {
-                    ResetRound();
+                    _players.Add(new Player($"Player{i}"));
                 }
+
+                OnStateChanged += _ui.Table;
+
+                _deck.Shuffle();
+
+                bool playAgain = true;
+
+                while (playAgain)
+                {
+                    PlayRound();
+
+                    if (_players.Count == 0)
+                    {
+                        AnsiConsole.MarkupLine("[red]All players have been eliminated![/]");
+                        break;
+                    }
+
+                    playAgain = AskPlayAgain();
+
+                    if (playAgain)
+                    {
+                        ResetRound();
+                    }
+                }
+
+                restart = AnsiConsole.Confirm("Return to start screen?");
             }
 
             Console.WriteLine("Thanks for playing!");
@@ -65,6 +86,13 @@ namespace Blackjack.Classes
         private void PlayRound()
         {
             ResetRound();
+            RemoveEliminatedPlayers();
+
+            if (_players.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No players remaining. Game over![/]");
+                return;
+            }
 
             if (_deck.ShouldReshuffle)
             {
@@ -135,7 +163,7 @@ namespace Blackjack.Classes
 
             for (int i = 0; i < player.Hands.Count; i++)
             {
-                queue.Enqueue((player.Hands[i]));
+                queue.Enqueue(player.Hands[i]);
             }
 
             while (queue.Count > 0)
@@ -151,36 +179,58 @@ namespace Blackjack.Classes
                     var choices = new List<string> { "Hit", "Stand" };
 
                     if (hand.CanSplit())
-                        choices.Add("Split");
+                        choices.Add(_bets.CanAffordSplit(player, hand) ? "Split" : "[grey]Split (can't afford)[/]");
+
+                    if (hand.CanDouble())
+                        choices.Add(_bets.CanAffordDouble(player, hand) ? "Double" : "[grey]Double (can't afford)[/]");
+
+                    if (hand.CanSurrender())
+                        choices.Add("Surrender");
 
                     var choice = AnsiConsole.Prompt(
                         new SelectionPrompt<string>()
                             .Title($"What do you want to do? (Hand {index + 1})")
                             .AddChoices(choices));
 
-                    if (choice == "Hit")
+                    switch (choice)
                     {
-                        hand.AddCard(_deck.DrawCard());
+                        case "Hit":
+                            hand.AddCard(_deck.DrawCard());
+                            if (hand.IsBust)
+                                hand.State = HandState.Bust;
+                            NotifyUI();
+                            break;
 
-                        if (hand.IsBust)
-                            hand.State = HandState.Bust;
+                        case "Split":
+                            var newHand = hand.Split(_deck);
+                            _bets.TakeSplitBet(player, hand, newHand);
+                            player.Hands.Add(newHand);
+                            queue.Enqueue(newHand);
+                            NotifyUI();
+                            break;
 
-                        NotifyUI();
-                    }
-                    else if (choice == "Split")
-                    {
-                        var newHand = hand.Split(_deck);
+                        case "Double":
+                            _bets.TakeDoubleBet(player, hand);
+                            hand.AddCard(_deck.DrawCard());
+                            hand.State = hand.IsBust ? HandState.Bust : HandState.Finished;
+                            NotifyUI();
+                            break;
 
-                        player.Hands.Add(newHand);
-                        queue.Enqueue(newHand);
+                        case "Surrender":
+                            hand.Result = HandResult.Surrender;
+                            hand.State = HandState.Finished;
+                            NotifyUI();
+                            break;
 
-                        NotifyUI();
-                    }
-                    else
-                    {
-                        hand.State = HandState.Finished;
-                        NotifyUI();
-                        break;
+                        case "Stand":
+                            hand.State = HandState.Finished;
+                            NotifyUI();
+                            break;
+
+                        case "[grey]Split (can't afford)[/]":
+
+                        case "[grey]Double (can't afford)[/]":
+                            break;
                     }
                 }
             }
@@ -198,6 +248,17 @@ namespace Blackjack.Classes
             }
 
             _dealerReveal = true;
+        }
+
+        private void RemoveEliminatedPlayers()
+        {
+            var eliminated = _players.Where(p => p.Balance < 10m).ToList();
+
+            foreach (var player in eliminated)
+            {
+                AnsiConsole.MarkupLine($"[red]{player.Name} has been eliminated with a balance of {player.Balance}![/]");
+                _players.Remove(player);
+            }
         }
 
         private void ShowResults()

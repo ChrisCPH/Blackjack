@@ -88,6 +88,16 @@ public class Hand
         return Cards[0].Rank == Cards[1].Rank;
     }
 
+    public bool CanDouble()
+    {
+        return Cards.Count == 2;
+    }
+
+    public bool CanSurrender()
+    {
+        return Cards.Count == 2;
+    }
+
     public string GetCardsAsString()
     {
         return string.Join(", ", Cards);
