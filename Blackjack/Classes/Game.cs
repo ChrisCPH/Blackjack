@@ -18,6 +18,8 @@ namespace Blackjack.Classes
         public event Action<GameStateChangedEvent>? OnStateChanged;
         private Guid _activeHandId;
         private readonly Bets _bets = new();
+        private bool _betsAlreadyPlaced = false;
+        private Dictionary<Player, decimal> _previousBets = new();
 
         public Game()
         {
@@ -58,7 +60,7 @@ namespace Blackjack.Classes
 
                 while (playAgain)
                 {
-                    PlayRound();
+                    RemoveEliminatedPlayers();
 
                     if (_players.Count == 0)
                     {
@@ -66,25 +68,34 @@ namespace Blackjack.Classes
                         break;
                     }
 
-                    playAgain = AskPlayAgain();
+                    PlayRound();
+
+                    var choice = AnsiConsole.Prompt(
+                        new SelectionPrompt<string>()
+                            .Title("Same bets?")
+                            .AddChoices("Yes", "No", "Quit"));
+
+                    if (choice == "Quit")
+                    {
+                        playAgain = false;
+                    }
+                    else if (choice == "Yes")
+                    {
+                        if (!_bets.TryApplySameBets(_players, _previousBets))
+                            AnsiConsole.MarkupLine("[red]One or more players can't afford their previous bet. Taking new bets.[/]");
+                        else
+                            _betsAlreadyPlaced = true;
+                    }
                 }
-
                 restart = AnsiConsole.Confirm("Return to start screen?");
+                AnsiConsole.Clear();
             }
-
             Console.WriteLine("Thanks for playing!");
         }
 
         private void PlayRound()
         {
             ResetRound();
-            RemoveEliminatedPlayers();
-
-            if (_players.Count == 0)
-            {
-                AnsiConsole.MarkupLine("[red]No players remaining. Game over![/]");
-                return;
-            }
 
             if (_deck.ShouldReshuffle)
             {
@@ -92,15 +103,35 @@ namespace Blackjack.Classes
                 _deck.RebuildAndShuffle();
             }
 
-            _bets.TakeBets(_players);
+            if (_betsAlreadyPlaced)
+            {
+                foreach (var player in _players)
+                {
+                    player.Hands[0].Bet = _previousBets[player];
+                    player.RemoveMoney(_previousBets[player]);
+                }
+            }
+            else
+            {
+                _bets.TakeBets(_players);
+            }
+
+            _betsAlreadyPlaced = false;
+
+            foreach (var player in _players)
+                _previousBets[player] = player.Hands[0].Bet;
+
+            if (_players.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[red]No players remaining. Game over![/]");
+                return;
+            }
 
             DealInitialCards();
             NotifyUI();
 
             foreach (var player in _players)
-            {
                 PlayerTurn(player);
-            }
 
             DealerTurn();
 
@@ -123,16 +154,6 @@ namespace Blackjack.Classes
             _dealer.Hand = new Hand();
             _dealerReveal = false;
             _activeHandId = Guid.Empty;
-        }
-
-        private bool AskPlayAgain()
-        {
-            var choice = AnsiConsole.Prompt(
-                new SelectionPrompt<string>()
-                    .Title("Play again?")
-                    .AddChoices("Yes", "No"));
-            AnsiConsole.Clear();
-            return choice == "Yes";
         }
 
         private void DealInitialCards()

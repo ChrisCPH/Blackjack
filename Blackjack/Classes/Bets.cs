@@ -45,6 +45,17 @@ namespace Blackjack.Classes
             return value != Math.Round(value, 2, MidpointRounding.AwayFromZero);
         }
 
+        public bool TryApplySameBets(List<Player> players, Dictionary<Player, decimal> previousBets)
+        {
+            foreach (var player in players)
+            {
+                if (!previousBets.TryGetValue(player, out decimal previousBet) || player.Balance < previousBet)
+                    return false;
+            }
+
+            return true;
+        }
+
         public bool CanAffordSplit(Player player, Hand hand)
         {
             return player.Balance >= hand.Bet;
