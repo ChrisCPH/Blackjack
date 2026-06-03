@@ -1,33 +1,34 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using Blackjack.Classes;
 
-namespace Blackjack.Classes
+public class Deck
 {
-    public class Deck
+    private readonly List<Card> _cards = [];
+    private readonly int _deckCount;
+
+    public int CardsLeft => _cards.Count;
+    public bool ShouldReshuffle => _cards.Count < 30 * _deckCount;
+
+    public Deck(int deckCount = 1)
     {
-        private readonly List<Card> _cards = [];
-        public int CardsLeft => _cards.Count;
-        public bool ShouldReshuffle => _cards.Count < 15;
+        _deckCount = deckCount;
+        CreateDeck();
+        Shuffle();
+    }
 
-        public Deck()
+    private void CreateDeck()
+    {
+        _cards.Clear();
+
+        string[] suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
+        string[] ranks =
+        [
+            "Ace", "2", "3", "4", "5",
+            "6", "7", "8", "9", "10",
+            "Jack", "Queen", "King"
+        ];
+
+        for (int d = 0; d < _deckCount; d++)
         {
-            CreateDeck();
-            Shuffle();
-        }
-
-        private void CreateDeck()
-        {
-            _cards.Clear();
-
-            string[] suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
-            string[] ranks =
-            [
-                "Ace", "2", "3", "4", "5",
-                "6", "7", "8", "9", "10",
-                "Jack", "Queen", "King"
-            ];
-
             foreach (var suit in suits)
             {
                 foreach (var rank in ranks)
@@ -43,36 +44,33 @@ namespace Blackjack.Classes
                 }
             }
         }
+    }
 
-        public void Shuffle()
+    public void Shuffle()
+    {
+        Random random = new();
+
+        for (int i = _cards.Count - 1; i > 0; i--)
         {
-            Random random = new();
-
-            for (int i = _cards.Count - 1; i > 0; i--)
-            {
-                int j = random.Next(i + 1);
-
-                (_cards[i], _cards[j]) = (_cards[j], _cards[i]);
-            }
+            int j = random.Next(i + 1);
+            (_cards[i], _cards[j]) = (_cards[j], _cards[i]);
         }
+    }
 
-        public Card DrawCard()
-        {
-            if (_cards.Count == 0)
-            {
-                throw new InvalidOperationException("Deck is empty!");
-            }
+    public Card DrawCard()
+    {
+        if (_cards.Count == 0)
+            throw new InvalidOperationException("Deck is empty!");
 
-            var card = _cards[0];
-            _cards.RemoveAt(0);
+        var card = _cards[0];
+        _cards.RemoveAt(0);
 
-            return card;
-        }
+        return card;
+    }
 
-        public void RebuildAndShuffle()
-        {
-            CreateDeck();
-            Shuffle();
-        }
+    public void RebuildAndShuffle()
+    {
+        CreateDeck();
+        Shuffle();
     }
 }

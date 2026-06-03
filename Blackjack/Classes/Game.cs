@@ -12,7 +12,7 @@ namespace Blackjack.Classes
     {
         private readonly List<Player> _players = [];
         private readonly Dealer _dealer = new();
-        private readonly Deck _deck = new();
+        private Deck _deck = new();
         private bool _dealerReveal = false;
         private readonly UIManager _ui = new();
         public event Action<GameStateChangedEvent>? OnStateChanged;
@@ -21,8 +21,7 @@ namespace Blackjack.Classes
 
         public Game()
         {
-            _deck = new Deck();
-            _deck.Shuffle();
+            OnStateChanged += _ui.Table;
         }
 
         private void NotifyUI()
@@ -47,15 +46,13 @@ namespace Blackjack.Classes
 
                 var setup = new GameSetup();
                 var playerCount = setup.AskPlayerCount();
+                var deckCount = setup.AskDeckCount();
+                _deck = new Deck(deckCount);
 
                 for (int i = 1; i <= playerCount; i++)
                 {
                     _players.Add(new Player($"Player{i}"));
                 }
-
-                OnStateChanged += _ui.Table;
-
-                _deck.Shuffle();
 
                 bool playAgain = true;
 
@@ -70,11 +67,6 @@ namespace Blackjack.Classes
                     }
 
                     playAgain = AskPlayAgain();
-
-                    if (playAgain)
-                    {
-                        ResetRound();
-                    }
                 }
 
                 restart = AnsiConsole.Confirm("Return to start screen?");
