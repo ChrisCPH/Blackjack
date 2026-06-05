@@ -1,43 +1,122 @@
 ﻿using Blackjack.Enums;
-using Spectre.Console;
+using Blackjack.UI;
+using Terminal.Gui.App;
+using Terminal.Gui.ViewBase;
+using Terminal.Gui.Views;
 
 namespace Blackjack.Classes
 {
     public class Bets
     {
-        public void TakeBets(List<Player> players)
+        public async Task TakeBetsAsync(List<Player> players, UIManager ui)
         {
             foreach (var player in players)
             {
-                var bet = AskBet(player);
-
+                var bet = await AskBetAsync(player, ui);
                 player.RemoveMoney(bet);
-
-                var hand = player.Hands[0];
-                hand.Bet = bet;
+                player.Hands[0].Bet = bet;
             }
         }
 
-        private decimal AskBet(Player player)
+        private Task<decimal> AskBetAsync(Player player, UIManager ui)
         {
             const decimal minimumBet = 10m;
+            var tcs = new TaskCompletionSource<decimal>();
 
-            decimal bet = AnsiConsole.Ask<decimal>(
-                $"[yellow]{player.Name}[/] - Balance: [green]{player.Balance:F2}[/]\nEnter bet (min {minimumBet}):");
+            ui.App.Invoke(() => ShowBetScreen(player, minimumBet, ui, tcs));
 
-            while (bet < minimumBet || bet > player.Balance || HasTooManyDecimals(bet))
+            return tcs.Task;
+        }
+
+        private void ShowBetScreen(Player player, decimal minimumBet, UIManager ui, TaskCompletionSource<decimal> tcs, string? errorMessage = null)
+        {
+            var window = new Window
             {
-                string reason = bet < minimumBet
-                    ? $"Minimum bet is {minimumBet}."
-                    : bet > player.Balance
-                        ? $"Insufficient balance."
-                        : "Bets can only have up to 2 decimal places.";
+                Title = "Place Your Bets",
+                X = 0,
+                Y = 0,
+                Width = Dim.Fill(),
+                Height = Dim.Fill()
+            };
 
-                bet = AnsiConsole.Ask<decimal>(
-                    $"{reason} Try again ({player.Name}) - Balance: {player.Balance:F2} Enter bet:");
-            }
+            var nameLabel = new Label
+            {
+                Text = $"{player.Name} — Balance: {player.Balance:C}",
+                X = Pos.Center(),
+                Y = Pos.Center() - 4,
+                Width = Dim.Auto()
+            };
 
-            return bet;
+            var promptLabel = new Label
+            {
+                Text = $"Enter bet (min {minimumBet:C}):",
+                X = Pos.Center(),
+                Y = Pos.Center() - 2,
+                Width = Dim.Auto()
+            };
+
+            var betField = new TextField
+            {
+                X = Pos.Center(),
+                Y = Pos.Center(),
+                Width = 20,
+                Text = minimumBet.ToString()
+            };
+
+            var errorLabel = new Label
+            {
+                Text = errorMessage ?? string.Empty,
+                X = Pos.Center(),
+                Y = Pos.Center() + 2,
+                Width = Dim.Auto(),
+                Visible = errorMessage != null
+            };
+
+            var okButton = new Button
+            {
+                Title = "OK",
+                X = Pos.Center(),
+                Y = Pos.Center() + 4,
+                IsDefault = true
+            };
+
+            okButton.Accepting += (s, e) =>
+            {
+                if (!decimal.TryParse(betField.Text, out decimal bet))
+                {
+                    window.App?.RequestStop();
+                    ui.App.Invoke(() => ShowBetScreen(player, minimumBet, ui, tcs, "Invalid amount. Please enter a number."));
+                    return;
+                }
+
+                if (bet < minimumBet)
+                {
+                    window.App?.RequestStop();
+                    ui.App.Invoke(() => ShowBetScreen(player, minimumBet, ui, tcs, $"Minimum bet is {minimumBet:C}."));
+                    return;
+                }
+
+                if (bet > player.Balance)
+                {
+                    window.App?.RequestStop();
+                    ui.App.Invoke(() => ShowBetScreen(player, minimumBet, ui, tcs, "Insufficient balance."));
+                    return;
+                }
+
+                if (HasTooManyDecimals(bet))
+                {
+                    window.App?.RequestStop();
+                    ui.App.Invoke(() => ShowBetScreen(player, minimumBet, ui, tcs, "Bets can only have up to 2 decimal places."));
+                    return;
+                }
+
+                tcs.TrySetResult(bet);
+                window.App?.RequestStop();
+            };
+
+            window.Add(nameLabel, promptLabel, betField, errorLabel, okButton);
+            ui.App.Run(window);
+            window.Dispose();
         }
 
         private bool HasTooManyDecimals(decimal value)

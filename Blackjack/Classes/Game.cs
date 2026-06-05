@@ -1,10 +1,10 @@
 ﻿using Blackjack.Enums;
 using Blackjack.UI;
-using Spectre.Console;
-using System;
-using System.Collections.Generic;
-using System.Numerics;
+using System.Collections.ObjectModel;
 using System.Text;
+using Terminal.Gui.App;
+using Terminal.Gui.ViewBase;
+using Terminal.Gui.Views;
 
 namespace Blackjack.Classes
 {
@@ -21,24 +21,46 @@ namespace Blackjack.Classes
         private bool _betsAlreadyPlaced = false;
         private Dictionary<Player, decimal> _previousBets = new();
 
+
         public Game()
         {
             OnStateChanged += _ui.Table;
         }
 
-        private void NotifyUI()
+        private async Task NotifyUI()
         {
-            OnStateChanged?.Invoke(new GameStateChangedEvent
+            var playerSnapshot = _players.ToList();
+            var dealer = _dealer;
+            var dealerReveal = _dealerReveal;
+            var activeHandId = _activeHandId;
+
+            await _ui.InvokeAsync(() =>
             {
-                Players = _players,
-                Dealer = _dealer,
-                DealerReveal = _dealerReveal,
-                ActiveHandId = _activeHandId,
-                Balance = _players.Sum(p => p.Balance)
+                OnStateChanged?.Invoke(new GameStateChangedEvent
+                {
+                    Players = playerSnapshot,
+                    Dealer = dealer,
+                    DealerReveal = dealerReveal,
+                    ActiveHandId = activeHandId,
+                    Balance = playerSnapshot.Sum(p => p.Balance)
+                });
             });
         }
 
         public void Start()
+        {
+            _ui.Init();
+
+            _ui.App.AddTimeout(TimeSpan.Zero, () =>
+            {
+                Task.Run(async () => await RunGameLoop());
+                return false;
+            });
+
+            _ui.Run();
+        }
+
+        private async Task RunGameLoop()
         {
             bool restart = true;
 
@@ -46,15 +68,13 @@ namespace Blackjack.Classes
             {
                 _players.Clear();
 
-                var setup = new GameSetup();
-                var playerCount = setup.AskPlayerCount();
-                var deckCount = setup.AskDeckCount();
+                var setup = new GameSetup(_ui);
+                var playerCount = await setup.AskPlayerCount();
+                var deckCount = await setup.AskDeckCount();
                 _deck = new Deck(deckCount);
 
                 for (int i = 1; i <= playerCount; i++)
-                {
                     _players.Add(new Player($"Player{i}"));
-                }
 
                 bool playAgain = true;
 
@@ -64,16 +84,13 @@ namespace Blackjack.Classes
 
                     if (_players.Count == 0)
                     {
-                        AnsiConsole.MarkupLine("[red]All players have been eliminated![/]");
+                        await ShowMessageAsync("All players have been eliminated!");
                         break;
                     }
 
-                    PlayRound();
+                    await PlayRoundAsync();
 
-                    var choice = AnsiConsole.Prompt(
-                        new SelectionPrompt<string>()
-                            .Title("Same bets?")
-                            .AddChoices("Yes", "No", "Quit"));
+                    var choice = await ShowSelectionAsync("Same bets?", ["Yes", "No", "Quit"]);
 
                     if (choice == "Quit")
                     {
@@ -82,24 +99,27 @@ namespace Blackjack.Classes
                     else if (choice == "Yes")
                     {
                         if (!_bets.TryApplySameBets(_players, _previousBets))
-                            AnsiConsole.MarkupLine("[red]One or more players can't afford their previous bet. Taking new bets.[/]");
+                            await ShowMessageAsync("One or more players can't afford their previous bet. Taking new bets.");
                         else
                             _betsAlreadyPlaced = true;
                     }
                 }
-                restart = AnsiConsole.Confirm("Return to start screen?");
-                AnsiConsole.Clear();
+
+                var restartChoice = await ShowSelectionAsync("Return to start screen?", ["Yes", "No exit game"]);
+                restart = restartChoice == "Yes";
             }
-            Console.WriteLine("Thanks for playing!");
+
+            await ShowMessageAsync("Thanks for playing!");
+            _ui.App.RequestStop();
         }
 
-        private void PlayRound()
+        private async Task PlayRoundAsync()
         {
             ResetRound();
 
             if (_deck.ShouldReshuffle)
             {
-                Console.WriteLine("Reshuffling deck...");
+                await ShowMessageAsync("Reshuffling deck...");
                 _deck.RebuildAndShuffle();
             }
 
@@ -113,7 +133,7 @@ namespace Blackjack.Classes
             }
             else
             {
-                _bets.TakeBets(_players);
+                await _bets.TakeBetsAsync(_players, _ui);
             }
 
             _betsAlreadyPlaced = false;
@@ -123,15 +143,15 @@ namespace Blackjack.Classes
 
             if (_players.Count == 0)
             {
-                AnsiConsole.MarkupLine("[red]No players remaining. Game over![/]");
+                await ShowMessageAsync("No players remaining. Game over!");
                 return;
             }
 
             DealInitialCards();
-            NotifyUI();
+            await NotifyUI();
 
             foreach (var player in _players)
-                PlayerTurn(player);
+                await PlayerTurnAsync(player);
 
             DealerTurn();
 
@@ -139,17 +159,15 @@ namespace Blackjack.Classes
 
             _bets.PayWinnings(_players, _dealer);
 
-            NotifyUI();
+            await NotifyUI();
 
-            ShowResults();
+            await ShowResultsAsync();
         }
 
         private void ResetRound()
         {
             foreach (var player in _players)
-            {
                 player.Reset();
-            }
 
             _dealer.Hand = new Hand();
             _dealerReveal = false;
@@ -161,7 +179,6 @@ namespace Blackjack.Classes
             foreach (var player in _players)
             {
                 var hand = player.Hands[0];
-
                 hand.AddCard(_deck.DrawCard());
                 hand.AddCard(_deck.DrawCard());
             }
@@ -170,14 +187,12 @@ namespace Blackjack.Classes
             _dealer.Hand.AddCard(_deck.DrawCard());
         }
 
-        private void PlayerTurn(Player player)
+        private async Task PlayerTurnAsync(Player player)
         {
             Queue<Hand> queue = new();
 
             for (int i = 0; i < player.Hands.Count; i++)
-            {
                 queue.Enqueue(player.Hands[i]);
-            }
 
             while (queue.Count > 0)
             {
@@ -187,23 +202,22 @@ namespace Blackjack.Classes
                 while (hand.State == HandState.Active && !hand.IsBust)
                 {
                     _activeHandId = hand.Id;
-                    NotifyUI();
+                    await NotifyUI();
 
                     var choices = new List<string> { "Hit", "Stand" };
 
                     if (hand.CanSplit())
-                        choices.Add(_bets.CanAffordSplit(player, hand) ? "Split" : "[grey]Split (can't afford)[/]");
+                        choices.Add(_bets.CanAffordSplit(player, hand) ? "Split" : "Split (can't afford)");
 
                     if (hand.CanDouble())
-                        choices.Add(_bets.CanAffordDouble(player, hand) ? "Double" : "[grey]Double (can't afford)[/]");
+                        choices.Add(_bets.CanAffordDouble(player, hand) ? "Double" : "Double (can't afford)");
 
                     if (hand.CanSurrender())
                         choices.Add("Surrender");
 
-                    var choice = AnsiConsole.Prompt(
-                        new SelectionPrompt<string>()
-                            .Title($"What do you want to do? (Hand {index + 1})")
-                            .AddChoices(choices));
+                    var choice = await _ui.ShowActionsAsync(
+                        $"{player.Name} - Hand {index + 1}",
+                        choices);
 
                     switch (choice)
                     {
@@ -211,7 +225,7 @@ namespace Blackjack.Classes
                             hand.AddCard(_deck.DrawCard());
                             if (hand.IsBust)
                                 hand.State = HandState.Bust;
-                            NotifyUI();
+                            await NotifyUI();
                             break;
 
                         case "Split":
@@ -219,30 +233,25 @@ namespace Blackjack.Classes
                             _bets.TakeSplitBet(player, hand, newHand);
                             player.Hands.Add(newHand);
                             queue.Enqueue(newHand);
-                            NotifyUI();
+                            await NotifyUI();
                             break;
 
                         case "Double":
                             _bets.TakeDoubleBet(player, hand);
                             hand.AddCard(_deck.DrawCard());
                             hand.State = hand.IsBust ? HandState.Bust : HandState.Finished;
-                            NotifyUI();
+                            await NotifyUI();
                             break;
 
                         case "Surrender":
                             hand.Result = HandResult.Surrender;
                             hand.State = HandState.Finished;
-                            NotifyUI();
+                            await NotifyUI();
                             break;
 
                         case "Stand":
                             hand.State = HandState.Finished;
-                            NotifyUI();
-                            break;
-
-                        case "[grey]Split (can't afford)[/]":
-
-                        case "[grey]Double (can't afford)[/]":
+                            await NotifyUI();
                             break;
                     }
                 }
@@ -251,16 +260,12 @@ namespace Blackjack.Classes
 
         private void DealerTurn()
         {
-
             while (_dealer.ShouldHit())
             {
-                var card = _deck.DrawCard();
-                _dealer.Hand.AddCard(card);
+                _dealer.Hand.AddCard(_deck.DrawCard());
 
-                NotifyUI();
-            }
-
-            _dealerReveal = true;
+                _dealerReveal = true;
+            } 
         }
 
         private void RemoveEliminatedPlayers()
@@ -268,34 +273,119 @@ namespace Blackjack.Classes
             var eliminated = _players.Where(p => p.Balance < 10m).ToList();
 
             foreach (var player in eliminated)
-            {
-                AnsiConsole.MarkupLine($"[red]{player.Name} has been eliminated with a balance of {player.Balance}![/]");
                 _players.Remove(player);
-            }
         }
 
-        private void ShowResults()
+        private async Task ShowResultsAsync()
         {
-            AnsiConsole.WriteLine("\nResults:\n");
+            var sb = new StringBuilder();
 
-            AnsiConsole.WriteLine($"Dealer score: ({_dealer.Hand.GetValue()})\n");
+            sb.AppendLine($"Dealer score: {_dealer.Hand.GetValue()}\n");
 
             foreach (var player in _players)
             {
-                AnsiConsole.MarkupLine($"[yellow]{player.Name}[/] - Balance: [green]{player.Balance}[/]");
+                sb.AppendLine($"{player.Name} - Balance: {player.Balance:C}");
 
                 foreach (var hand in player.Hands)
                 {
-                    AnsiConsole.MarkupLine(
+                    sb.AppendLine(
                         $"Hand ({hand.GetValue()}): {hand.Result}\n" +
-                        $"Bet: [bold green]{hand.Bet}[/]\n" +
-                        $"Payout: [bold green]{hand.Payout}[/]\n" +
-                        $"Net: [bold green]{hand.Net}[/]\n"
+                        $"Bet: {hand.Bet}  Payout: {hand.Payout}  Net: {hand.Net}"
                     );
                 }
 
-                AnsiConsole.WriteLine();
+                sb.AppendLine();
             }
+
+            _dealerReveal = true;
+            await NotifyUI();
+
+            sb.AppendLine("Round finished. Continue?");
+            await ShowMessageAsync(sb.ToString());
+        }
+
+        private async Task<string> ShowSelectionAsync(string title, string[] choices)
+        {
+            var tcs = new TaskCompletionSource<string>();
+
+            await _ui.InvokeAsync(() =>
+            {
+                var dialog = new Dialog
+                {
+                    Title = title,
+                    Width = 40,
+                    Height = choices.Length + 6
+                };
+
+                var listView = new ListView
+                {
+                    X = 1,
+                    Y = 1,
+                    Width = Dim.Fill(1),
+                    Height = choices.Length,
+                    Source = new ListWrapper<string>(new ObservableCollection<string>(choices))
+                };
+
+                listView.Accepting += (s, e) =>
+                {
+                    tcs.TrySetResult(choices[listView.SelectedItem ?? 0]);
+                    dialog.App?.RequestStop();
+                };
+
+                dialog.Add(listView, listView);
+                _ui.App.Run(dialog);
+                dialog.Dispose();
+            });
+
+            return await tcs.Task;
+        }
+
+        private async Task ShowMessageAsync(string message)
+        {
+            var tcs = new TaskCompletionSource();
+
+            await _ui.InvokeAsync(() =>
+            {
+                var lines = message.Split('\n');
+                var width = Math.Min(80, lines.Max(l => l.Length) + 6);
+                var height = Math.Min(20, lines.Length + 6);
+
+                var dialog = new Dialog
+                {
+                    Title = "Blackjack",
+                    Width = width,
+                    Height = lines.Length + 10
+                };
+
+                var label = new Label
+                {
+                    Text = message,
+                    X = 1,
+                    Y = 1,
+                    Width = Dim.Fill(1),
+                    Height = lines.Length
+                };
+
+                var okButton = new Button
+                {
+                    Title = "OK",
+                    X = Pos.Center(),
+                    Y = Pos.Bottom(label) + 1,
+                    IsDefault = true
+                };
+
+                okButton.Accepting += (s, e) =>
+                {
+                    tcs.TrySetResult();
+                    dialog.App?.RequestStop();
+                };
+
+                dialog.Add(label, okButton);
+                _ui.App.Run(dialog);
+                dialog.Dispose();
+            });
+
+            await tcs.Task;
         }
     }
 }
