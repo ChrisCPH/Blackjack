@@ -13,7 +13,7 @@ namespace Blackjack.Classes
         public Player(string name)
         {
             Name = name;
-            Balance = 1000m;
+            Balance = 1000m; //Hardcoded starting balance for simplicity
         }
 
         public void AddMoney(decimal amount)

@@ -6,7 +6,10 @@ public class Deck
     private readonly int _deckCount;
 
     public int CardsLeft => _cards.Count;
-    public bool ShouldReshuffle => _cards.Count < 30 * _deckCount;
+    private const int CardsPerDeck = 52;
+    private const double ReshuffleThreshold = 0.25;
+    public bool ShouldReshuffle =>
+        _cards.Count < (CardsPerDeck * _deckCount * ReshuffleThreshold); // Reshuffle when less than 25% of the cards are left
 
     public Deck(int deckCount = 1)
     {

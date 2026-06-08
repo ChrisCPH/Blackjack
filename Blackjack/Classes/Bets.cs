@@ -12,13 +12,13 @@ namespace Blackjack.Classes
         {
             foreach (var player in players)
             {
-                var bet = await AskBetAsync(player, ui);
+                var bet = await AskBet(player, ui);
                 player.RemoveMoney(bet);
                 player.Hands[0].Bet = bet;
             }
         }
 
-        private Task<decimal> AskBetAsync(Player player, UIManager ui)
+        private Task<decimal> AskBet(Player player, UIManager ui)
         {
             const decimal minimumBet = 10m;
             var tcs = new TaskCompletionSource<decimal>();
@@ -222,7 +222,7 @@ namespace Blackjack.Classes
         {
             foreach (var player in players)
             {
-                var bet = await AskPairBetAsync(player, ui);
+                var bet = await AskPairBet(player, ui);
                 if (bet > 0)
                 {
                     player.RemoveMoney(bet);
@@ -231,7 +231,7 @@ namespace Blackjack.Classes
             }
         }
 
-        private Task<decimal> AskPairBetAsync(Player player, UIManager ui)
+        private Task<decimal> AskPairBet(Player player, UIManager ui)
         {
             var tcs = new TaskCompletionSource<decimal>();
             ui.App.Invoke(() => ui.ShowPairBetScreen(player, tcs));
