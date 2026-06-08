@@ -21,7 +21,6 @@ namespace Blackjack.Classes
         private bool _betsAlreadyPlaced = false;
         private Dictionary<Player, decimal> _previousBets = new();
 
-
         public Game()
         {
             OnStateChanged += _ui.Table;
@@ -80,17 +79,28 @@ namespace Blackjack.Classes
 
                 while (playAgain)
                 {
-                    RemoveEliminatedPlayers();
-
                     if (_players.Count == 0)
                     {
-                        await ShowMessageAsync("All players have been eliminated!");
+                        await _ui.ShowMessageAsync("All players have been eliminated!");
                         break;
                     }
 
                     await PlayRoundAsync();
 
-                    var choice = await ShowSelectionAsync("Same bets?", ["Yes", "No", "Quit"]);
+                    var eliminated = RemoveEliminatedPlayers();
+
+                    foreach (var player in eliminated)
+                    {
+                        await _ui.ShowMessageAsync($"{player.Name} has been eliminated!");
+                    }
+
+                    if (_players.Count == 0)
+                    {
+                        await _ui.ShowMessageAsync("All players have been eliminated!");
+                        break;
+                    }
+
+                    var choice = await _ui.ShowSelectionAsync("Same bets?", ["Yes", "No", "Quit"]);
 
                     if (choice == "Quit")
                     {
@@ -99,17 +109,17 @@ namespace Blackjack.Classes
                     else if (choice == "Yes")
                     {
                         if (!_bets.TryApplySameBets(_players, _previousBets))
-                            await ShowMessageAsync("One or more players can't afford their previous bet. Taking new bets.");
+                            await _ui.ShowMessageAsync("One or more players can't afford their previous bet. Taking new bets.");
                         else
                             _betsAlreadyPlaced = true;
                     }
                 }
 
-                var restartChoice = await ShowSelectionAsync("Return to start screen?", ["Yes", "No exit game"]);
+                var restartChoice = await _ui.ShowSelectionAsync("Return to start screen?", ["Yes", "Exit game"]);
                 restart = restartChoice == "Yes";
             }
 
-            await ShowMessageAsync("Thanks for playing!");
+            await _ui.ShowMessageAsync("Thanks for playing!");
             _ui.App.RequestStop();
         }
 
@@ -119,7 +129,7 @@ namespace Blackjack.Classes
 
             if (_deck.ShouldReshuffle)
             {
-                await ShowMessageAsync("Reshuffling deck...");
+                await _ui.ShowMessageAsync("Reshuffling deck...");
                 _deck.RebuildAndShuffle();
             }
 
@@ -141,14 +151,19 @@ namespace Blackjack.Classes
             foreach (var player in _players)
                 _previousBets[player] = player.Hands[0].Bet;
 
+            await _bets.TakePairBetsAsync(_players, _ui);
+
             if (_players.Count == 0)
             {
-                await ShowMessageAsync("No players remaining. Game over!");
+                await _ui.ShowMessageAsync("No players remaining. Game over!");
                 return;
             }
 
             DealInitialCards();
             await NotifyUI();
+
+            if (_dealer.Hand.Cards[0].Rank == "Ace")
+                await _bets.TakeInsuranceBetsAsync(_players, _ui);
 
             foreach (var player in _players)
                 await PlayerTurnAsync(player);
@@ -156,7 +171,6 @@ namespace Blackjack.Classes
             DealerTurn();
 
             HandEvaluator.Evaluate(_players, _dealer);
-
             _bets.PayWinnings(_players, _dealer);
 
             await NotifyUI();
@@ -268,12 +282,18 @@ namespace Blackjack.Classes
             } 
         }
 
-        private void RemoveEliminatedPlayers()
+        private List<Player> RemoveEliminatedPlayers()
         {
-            var eliminated = _players.Where(p => p.Balance < 10m).ToList();
+            var eliminated = _players
+                .Where(p => p.Balance < 10m)
+                .ToList();
 
             foreach (var player in eliminated)
+            {
                 _players.Remove(player);
+            }
+
+            return eliminated;
         }
 
         private async Task ShowResultsAsync()
@@ -284,7 +304,7 @@ namespace Blackjack.Classes
 
             foreach (var player in _players)
             {
-                sb.AppendLine($"{player.Name} - Balance: {player.Balance:C}");
+                sb.AppendLine($"{player.Name} - Balance: {player.Balance}");
 
                 foreach (var hand in player.Hands)
                 {
@@ -292,6 +312,12 @@ namespace Blackjack.Classes
                         $"Hand ({hand.GetValue()}): {hand.Result}\n" +
                         $"Bet: {hand.Bet}  Payout: {hand.Payout}  Net: {hand.Net}"
                     );
+
+                    if (hand.PairBet > 0)
+                        sb.AppendLine($"Pair Bet: {hand.PairBet}  Result: {hand.PairResult}  Payout: {hand.PairPayout}");
+
+                    if (hand.InsuranceBet > 0)
+                        sb.AppendLine($"Insurance: {hand.InsuranceBet}  Result: {(hand.InsuranceResult ? "Win" : "Lose")}  Payout: {hand.InsurancePayout}");
                 }
 
                 sb.AppendLine();
@@ -301,91 +327,7 @@ namespace Blackjack.Classes
             await NotifyUI();
 
             sb.AppendLine("Round finished. Continue?");
-            await ShowMessageAsync(sb.ToString());
-        }
-
-        private async Task<string> ShowSelectionAsync(string title, string[] choices)
-        {
-            var tcs = new TaskCompletionSource<string>();
-
-            await _ui.InvokeAsync(() =>
-            {
-                var dialog = new Dialog
-                {
-                    Title = title,
-                    Width = 40,
-                    Height = choices.Length + 6
-                };
-
-                var listView = new ListView
-                {
-                    X = 1,
-                    Y = 1,
-                    Width = Dim.Fill(1),
-                    Height = choices.Length,
-                    Source = new ListWrapper<string>(new ObservableCollection<string>(choices))
-                };
-
-                listView.Accepting += (s, e) =>
-                {
-                    tcs.TrySetResult(choices[listView.SelectedItem ?? 0]);
-                    dialog.App?.RequestStop();
-                };
-
-                dialog.Add(listView, listView);
-                _ui.App.Run(dialog);
-                dialog.Dispose();
-            });
-
-            return await tcs.Task;
-        }
-
-        private async Task ShowMessageAsync(string message)
-        {
-            var tcs = new TaskCompletionSource();
-
-            await _ui.InvokeAsync(() =>
-            {
-                var lines = message.Split('\n');
-                var width = Math.Min(80, lines.Max(l => l.Length) + 6);
-                var height = Math.Min(20, lines.Length + 6);
-
-                var dialog = new Dialog
-                {
-                    Title = "Blackjack",
-                    Width = width,
-                    Height = lines.Length + 10
-                };
-
-                var label = new Label
-                {
-                    Text = message,
-                    X = 1,
-                    Y = 1,
-                    Width = Dim.Fill(1),
-                    Height = lines.Length
-                };
-
-                var okButton = new Button
-                {
-                    Title = "OK",
-                    X = Pos.Center(),
-                    Y = Pos.Bottom(label) + 1,
-                    IsDefault = true
-                };
-
-                okButton.Accepting += (s, e) =>
-                {
-                    tcs.TrySetResult();
-                    dialog.App?.RequestStop();
-                };
-
-                dialog.Add(label, okButton);
-                _ui.App.Run(dialog);
-                dialog.Dispose();
-            });
-
-            await tcs.Task;
+            await _ui.ShowMessageAsync(sb.ToString());
         }
     }
 }

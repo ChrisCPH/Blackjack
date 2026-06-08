@@ -41,7 +41,7 @@ namespace Blackjack.Classes
 
             var nameLabel = new Label
             {
-                Text = $"{player.Name} — Balance: {player.Balance:C}",
+                Text = $"{player.Name} — Balance: {player.Balance}",
                 X = Pos.Center(),
                 Y = Pos.Center() - 4,
                 Width = Dim.Auto()
@@ -49,7 +49,7 @@ namespace Blackjack.Classes
 
             var promptLabel = new Label
             {
-                Text = $"Enter bet (min {minimumBet:C}):",
+                Text = $"Enter bet (min {minimumBet}):",
                 X = Pos.Center(),
                 Y = Pos.Center() - 2,
                 Width = Dim.Auto()
@@ -92,7 +92,7 @@ namespace Blackjack.Classes
                 if (bet < minimumBet)
                 {
                     window.App?.RequestStop();
-                    ui.App.Invoke(() => ShowBetScreen(player, minimumBet, ui, tcs, $"Minimum bet is {minimumBet:C}."));
+                    ui.App.Invoke(() => ShowBetScreen(player, minimumBet, ui, tcs, $"Minimum bet is {minimumBet}."));
                     return;
                 }
 
@@ -170,19 +170,15 @@ namespace Blackjack.Classes
                         case HandResult.Blackjack:
                             payout = hand.Bet * 2.5m;
                             break;
-
                         case HandResult.Win:
                             payout = hand.Bet * 2m;
                             break;
-
                         case HandResult.Push:
                             payout = hand.Bet;
                             break;
-
                         case HandResult.Surrender:
                             payout = hand.Bet * 0.5m;
                             break;
-
                         case HandResult.Lose:
                         case HandResult.Bust:
                             payout = 0;
@@ -192,6 +188,75 @@ namespace Blackjack.Classes
                     payout = Math.Round(payout, 2, MidpointRounding.AwayFromZero);
                     hand.Payout = payout;
                     player.AddMoney(payout);
+
+                    if (hand.PairBet > 0)
+                    {
+                        decimal pairPayout = hand.PairResult switch
+                        {
+                            PairResult.PerfectPair => hand.PairBet * 26m,
+                            PairResult.ColoredPair => hand.PairBet * 13m,
+                            PairResult.MixedPair => hand.PairBet * 6m,
+                            _ => 0m
+                        };
+
+                        pairPayout = Math.Round(pairPayout, 2, MidpointRounding.AwayFromZero);
+                        hand.PairPayout = pairPayout;
+                        player.AddMoney(pairPayout);
+                    }
+
+                    if (hand.InsuranceBet > 0)
+                    {
+                        decimal insurancePayout = hand.InsuranceResult
+                            ? hand.InsuranceBet * 3m
+                            : 0m;
+
+                        insurancePayout = Math.Round(insurancePayout, 2, MidpointRounding.AwayFromZero);
+                        hand.InsurancePayout = insurancePayout;
+                        player.AddMoney(insurancePayout);
+                    }
+                }
+            }
+        }
+
+        public async Task TakePairBetsAsync(List<Player> players, UIManager ui)
+        {
+            foreach (var player in players)
+            {
+                var bet = await AskPairBetAsync(player, ui);
+                if (bet > 0)
+                {
+                    player.RemoveMoney(bet);
+                    player.Hands[0].PairBet = bet;
+                }
+            }
+        }
+
+        private Task<decimal> AskPairBetAsync(Player player, UIManager ui)
+        {
+            var tcs = new TaskCompletionSource<decimal>();
+            ui.App.Invoke(() => ui.ShowPairBetScreen(player, tcs));
+            return tcs.Task;
+        }
+
+        public async Task TakeInsuranceBetsAsync(List<Player> players, UIManager ui)
+        {
+            foreach (var player in players)
+            {
+                var maxInsurance = Math.Floor(player.Hands[0].Bet / 2 * 100) / 100;
+
+                if (player.Balance < 5m || maxInsurance < 5m)
+                    continue;
+
+                var bet = await ui.ShowBetInputAsync(
+                    $"Dealer shows Ace — {player.Name} place insurance bet?",
+                    5m,
+                    maxInsurance,
+                    player.Balance);
+
+                if (bet > 0)
+                {
+                    player.RemoveMoney(bet);
+                    player.Hands[0].InsuranceBet = bet;
                 }
             }
         }

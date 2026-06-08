@@ -11,6 +11,12 @@ public class Hand
     public decimal Bet { get; set; }
     public decimal Payout { get; set; }
     public decimal Net => Payout - Bet;
+    public decimal PairBet { get; set; }
+    public decimal PairPayout { get; set; }
+    public PairResult PairResult { get; set; } = PairResult.None;
+    public decimal InsuranceBet { get; set; }
+    public decimal InsurancePayout { get; set; }
+    public bool InsuranceResult { get; set; }
 
     public void AddCard(Card card)
     {

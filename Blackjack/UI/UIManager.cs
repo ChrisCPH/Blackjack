@@ -1,7 +1,8 @@
-﻿using Terminal.Gui.App;
+﻿using Blackjack.Classes;
+using System.Collections.ObjectModel;
+using Terminal.Gui.App;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
-using Blackjack.Classes;
 
 namespace Blackjack.UI
 {
@@ -312,6 +313,316 @@ namespace Blackjack.UI
         {
             if (cards.Count == 0) return 0;
             return cards[0].Value;
+        }
+
+        public async Task<string> ShowSelectionAsync(string title, string[] choices)
+        {
+            var tcs = new TaskCompletionSource<string>();
+
+            await InvokeAsync(() =>
+            {
+                var dialog = new Dialog
+                {
+                    Title = title,
+                    Width = 40,
+                    Height = choices.Length + 6
+                };
+
+                var listView = new ListView
+                {
+                    X = 1,
+                    Y = 1,
+                    Width = Dim.Fill(1),
+                    Height = choices.Length,
+                    Source = new ListWrapper<string>(new ObservableCollection<string>(choices))
+                };
+
+                listView.Accepting += (s, e) =>
+                {
+                    tcs.TrySetResult(choices[listView.SelectedItem ?? 0]);
+                    dialog.App?.RequestStop();
+                };
+
+                dialog.Add(listView, listView);
+                App.Run(dialog);
+                dialog.Dispose();
+            });
+
+            return await tcs.Task;
+        }
+
+        public async Task<decimal> ShowBetInputAsync(string title, decimal min, decimal max, decimal balance, string? errorMessage = null)
+        {
+            var tcs = new TaskCompletionSource<decimal>();
+
+            await InvokeAsync(() =>
+            {
+                var dialog = new Dialog
+                {
+                    Title = title,
+                    Width = Math.Max(50, title.Length + 6),
+                    Height = 10
+                };
+
+                var infoLabel = new Label
+                {
+                    Text = $"Balance: {balance}  |  Min: {min}  Max: {max}",
+                    X = 1,
+                    Y = 1,
+                    Width = Dim.Fill(1)
+                };
+
+                var errorLabel = new Label
+                {
+                    Text = errorMessage ?? string.Empty,
+                    X = 1,
+                    Y = 2,
+                    Width = Dim.Fill(1),
+                    Visible = errorMessage != null
+                };
+
+                var betField = new TextField
+                {
+                    X = 1,
+                    Y = 3,
+                    Width = Dim.Fill(1),
+                    Text = min.ToString()
+                };
+
+                var okButton = new Button
+                {
+                    Title = "OK",
+                    X = Pos.Center() - 4,
+                    Y = 5,
+                    IsDefault = false
+                };
+
+                var skipButton = new Button
+                {
+                    Title = "Skip",
+                    X = Pos.Center() + 4,
+                    Y = 5,
+                    IsDefault = true
+                };
+
+                okButton.Accepting += (s, e) =>
+                {
+                    if (!decimal.TryParse(betField.Text, out decimal bet))
+                    {
+                        dialog.App?.RequestStop();
+                        _ = ShowBetInputAsync(title, min, max, balance, "Invalid amount.");
+                        return;
+                    }
+
+                    if (bet < min)
+                    {
+                        dialog.App?.RequestStop();
+                        _ = ShowBetInputAsync(title, min, max, balance, $"Minimum bet is {min}.");
+                        return;
+                    }
+
+                    if (bet > max)
+                    {
+                        dialog.App?.RequestStop();
+                        _ = ShowBetInputAsync(title, min, max, balance, $"Maximum bet is {max}.");
+                        return;
+                    }
+
+                    if (bet > balance)
+                    {
+                        dialog.App?.RequestStop();
+                        _ = ShowBetInputAsync(title, min, max, balance, "Insufficient balance.");
+                        return;
+                    }
+
+                    if (bet != Math.Round(bet, 2, MidpointRounding.AwayFromZero))
+                    {
+                        dialog.App?.RequestStop();
+                        _ = ShowBetInputAsync(title, min, max, balance, "Max 2 decimal places.");
+                        return;
+                    }
+
+                    tcs.TrySetResult(bet);
+                    dialog.App?.RequestStop();
+                };
+
+                skipButton.Accepting += (s, e) =>
+                {
+                    tcs.TrySetResult(0);
+                    dialog.App?.RequestStop();
+                };
+
+                dialog.Add(infoLabel, errorLabel, betField, okButton, skipButton);
+                _app.Run(dialog);
+                dialog.Dispose();
+            });
+
+            return await tcs.Task;
+        }
+
+        public async Task ShowMessageAsync(string message)
+        {
+            var tcs = new TaskCompletionSource();
+
+            await InvokeAsync(() =>
+            {
+                var lines = message.Split('\n');
+                var width = Math.Min(80, lines.Max(l => l.Length) + 6);
+                var height = Math.Min(20, lines.Length + 6);
+
+                var dialog = new Dialog
+                {
+                    Title = "Blackjack",
+                    Width = width,
+                    Height = lines.Length + 10
+                };
+
+                var label = new Label
+                {
+                    Text = message,
+                    X = 1,
+                    Y = 1,
+                    Width = Dim.Fill(1),
+                    Height = lines.Length
+                };
+
+                var okButton = new Button
+                {
+                    Title = "OK",
+                    X = Pos.Center(),
+                    Y = Pos.Bottom(label) + 1,
+                    IsDefault = true
+                };
+
+                okButton.Accepting += (s, e) =>
+                {
+                    tcs.TrySetResult();
+                    dialog.App?.RequestStop();
+                };
+
+                dialog.Add(label, okButton);
+                App.Run(dialog);
+                dialog.Dispose();
+            });
+
+            await tcs.Task;
+        }
+
+        public void ShowPairBetScreen(Player player, TaskCompletionSource<decimal> tcs, string? errorMessage = null)
+        {
+            var window = new Window
+            {
+                Title = "Pair Side Bet",
+                X = 0,
+                Y = 0,
+                Width = Dim.Fill(),
+                Height = Dim.Fill()
+            };
+
+            var nameLabel = new Label
+            {
+                Text = $"{player.Name} — Balance: {player.Balance}",
+                X = Pos.Center(),
+                Y = Pos.Center() - 6,
+                Width = Dim.Auto()
+            };
+
+            var infoLabel = new Label
+            {
+                Text = "Place a Pair side bet? (Mixed 5:1 | Colored 12:1 | Perfect 25:1)",
+                X = Pos.Center(),
+                Y = Pos.Center() - 4,
+                Width = Dim.Auto()
+            };
+
+            var promptLabel = new Label
+            {
+                Text = "Enter bet amount (min 10) or skip:",
+                X = Pos.Center(),
+                Y = Pos.Center() - 2,
+                Width = Dim.Auto()
+            };
+
+            var betField = new TextField
+            {
+                X = Pos.Center(),
+                Y = Pos.Center(),
+                Width = 20,
+                Text = "10"
+            };
+
+            var errorLabel = new Label
+            {
+                Text = errorMessage ?? string.Empty,
+                X = Pos.Center(),
+                Y = Pos.Center() + 2,
+                Width = Dim.Auto(),
+                Visible = errorMessage != null
+            };
+
+            var okButton = new Button
+            {
+                Title = "Place Bet",
+                X = Pos.Center() - 8,
+                Y = Pos.Center() + 4
+            };
+
+            var skipButton = new Button
+            {
+                Title = "Skip",
+                X = Pos.Center() + 4,
+                Y = Pos.Center() + 4,
+                IsDefault = true
+            };
+
+            okButton.Accepting += (s, e) =>
+            {
+                if (!decimal.TryParse(betField.Text, out decimal bet))
+                {
+                    window.App?.RequestStop();
+                    App.Invoke(() => ShowPairBetScreen(player, tcs, "Invalid amount. Please enter a number."));
+                    return;
+                }
+
+                if (bet < 10m)
+                {
+                    window.App?.RequestStop();
+                    App.Invoke(() => ShowPairBetScreen(player, tcs, "Minimum pair bet is £10."));
+                    return;
+                }
+
+                if (bet > player.Balance)
+                {
+                    window.App?.RequestStop();
+                    App.Invoke(() => ShowPairBetScreen(player, tcs, "Insufficient balance."));
+                    return;
+                }
+
+                if (HasTooManyDecimals(bet))
+                {
+                    window.App?.RequestStop();
+                    App.Invoke(() => ShowPairBetScreen(player, tcs, "Bets can only have up to 2 decimal places."));
+                    return;
+                }
+
+                tcs.TrySetResult(bet);
+                window.App?.RequestStop();
+            };
+
+            skipButton.Accepting += (s, e) =>
+            {
+                tcs.TrySetResult(0);
+                window.App?.RequestStop();
+            };
+
+            window.Add(nameLabel, infoLabel, promptLabel, betField, errorLabel, okButton, skipButton);
+            App.Run(window);
+            window.Dispose();
+        }
+
+        private bool HasTooManyDecimals(decimal value)
+        {
+            return value != Math.Round(value, 2, MidpointRounding.AwayFromZero);
         }
     }
 }
